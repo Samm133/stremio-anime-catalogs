@@ -220,6 +220,11 @@ async function handleCatalog(req, res) {
         }
       }
       
+      // If no RPDB key is provided, append the rating to the title text
+      if (!cfg.rpdbkey && updatedMeta.imdbRating) {
+        updatedMeta.name = `${updatedMeta.name} (⭐ ${updatedMeta.imdbRating})`;
+      }
+      
       return updatedMeta;
     });
 
