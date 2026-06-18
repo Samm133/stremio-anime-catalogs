@@ -17,7 +17,11 @@ async function populateMappings() {
     // 2. Fetch Kitsu -> IMDB mapping
     const imdbResp = await fetch('https://raw.githubusercontent.com/TheBeastLT/stremio-kitsu-anime/master/static/data/imdb_mapping.json');
     if (imdbResp.ok) {
-      toImdb = await imdbResp.json();
+      const arr = await imdbResp.json();
+      toImdb = {};
+      arr.forEach(item => {
+        toImdb[item.kitsu_id] = item;
+      });
       console.log(`[Mapping] Loaded ${Object.keys(toImdb).length} Kitsu->IMDB mappings`);
     }
 
