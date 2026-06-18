@@ -31,7 +31,7 @@ const baseCatalogs = [
 ];
 
 function parseConfig(configStr) {
-  let cfg = { rpdbkey: '', dubbed: false };
+  let cfg = { rpdbkey: '' };
   if (!configStr) return cfg;
   try {
     const parsed = JSON.parse(decodeURIComponent(configStr));
@@ -41,23 +41,22 @@ function parseConfig(configStr) {
   }
 }
 
-function getManifest(config, hasConfig) {
+function getManifest(config) {
   const manifest = {
     id: 'community.anime-catalogs-clone',
     version: '1.0.0',
-    name: config.dubbed ? 'Dubbed Anime Catalogs' : 'Anime Catalogs',
-    description: 'Catálogos de anime desde AniList, MyAnimeList, Kitsu y AniDB. Soporta RPDB y Dubbed.',
+    name: 'Anime Catalogs',
+    description: 'Catálogos de anime desde AniList, MyAnimeList, Kitsu y AniDB. Soporta RPDB, filtro Dubbed y Top Rated.',
     logo: 'https://dl.strem.io/addon-logo.png',
     resources: ['catalog'],
     types: ['anime', 'series', 'movie'],
     idPrefixes: ['kitsu:', 'mal:', 'anilist:'],
-    // Only mark as configurable (shows gear icon), never block installation
     behaviorHints: { configurable: true },
     catalogs: baseCatalogs.map(c => ({
       ...c,
-      name: config.dubbed ? `Dubbed ${c.name}` : c.name,
       extra: [
-        { name: 'genre', options: ['Top Rated', 'Dubbed'] },
+        // Dubbed and Top Rated appear as selectable subgenres within each catalog
+        { name: 'genre', options: ['Dubbed', 'Top Rated'] },
         { name: 'skip' }
       ]
     }))
@@ -110,15 +109,8 @@ function serveConfigure(req, res) {
     <input type="text" id="rpdb" placeholder="Para calificaciones visuales en portadas (ratingposterdb.com)">
   </div>
 
-  <div class="field">
-    <label>Modo doblado (Dubbed Only)</label>
-    <div class="toggle-row" onclick="toggleDub()">
-      <div class="toggle" id="dub-toggle"></div>
-      <div>
-        <div class="toggle-label">Mostrar solo contenido doblado al inglés</div>
-        <div class="toggle-sub">Filtra todos los catálogos usando la lista MAL-Dubs</div>
-      </div>
-    </div>
+  <div class="field info-box">
+    <p style="font-size:13px;color:#8b949e;">💡 Los filtros <strong style="color:#e6edf3">Dubbed</strong> y <strong style="color:#e6edf3">Top Rated</strong> están disponibles directamente dentro de Stremio como subgéneros en cada catálogo. No necesitas configurarlos aquí.</p>
   </div>
 
   <button class="btn-install" onclick="install()">📺 Instalar en Stremio</button>
@@ -130,20 +122,12 @@ function serveConfigure(req, res) {
 </div>
 
 <script>
-  let dubOn = false;
   const host = '${host}';
-
-  function toggleDub() {
-    dubOn = !dubOn;
-    document.getElementById('dub-toggle').classList.toggle('on', dubOn);
-    updateUrl();
-  }
 
   function getConfig() {
     const rpdb = document.getElementById('rpdb').value.trim();
     const cfg = {};
     if (rpdb) cfg.rpdbkey = rpdb;
-    if (dubOn) cfg.dubbed = true;
     return Object.keys(cfg).length ? JSON.stringify(cfg) : null;
   }
 
@@ -209,8 +193,8 @@ async function handleCatalog(req, res) {
     else if (id.startsWith('kitsu-'))    metas = await fetchKitsu(id);
     else if (id.startsWith('anidb-'))    metas = await fetchAniDB(id);
 
-    // ── Filter: Dubbed ──
-    if (cfg.dubbed || extra.genre === 'Dubbed') {
+    // ── Filter: Dubbed (only when selected as subgenre in Stremio) ──
+    if (extra.genre === 'Dubbed') {
       metas = metas.filter(m => {
         const [source, rawId] = m.id.split(':');
         return isDubbed(source, rawId);
