@@ -211,6 +211,7 @@ async function handleCatalog(req, res) {
       if (imdbId) {
         // IMDB ID is best because Stremio's default Cinemeta handles it out-of-the-box
         updatedMeta.id = imdbId;
+        updatedMeta.type = 'series'; // Cinemeta requires 'series' or 'movie', it ignores 'anime'
       } else {
         // Fallback to Kitsu ID
         const mapData = getMappingData(source, rawId);
