@@ -2,10 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const qs = require('querystring');
 const { fetchAniList } = require('./sources/anilist');
-const { fetchMyAnimeList } = require('./sources/mal');
 const { fetchKitsu } = require('./sources/kitsu');
-const { fetchAniDB } = require('./sources/anidb');
-const { applyRPDB } = require('./helpers/rpdb');
+const { applyRatingPoster } = require('./helpers/rpdb');
 const { isDubbed } = require('./helpers/mapping');
 
 const app = express();
@@ -19,15 +17,10 @@ const baseCatalogs = [
   { type: 'anime', id: 'anilist-popular',       name: 'AniList - Popular This Season' },
   { type: 'anime', id: 'anilist-all-time',      name: 'AniList - All Time Popular' },
   { type: 'anime', id: 'anilist-top',           name: 'AniList - Top Anime' },
-  { type: 'anime', id: 'mal-top-all',           name: 'MyAnimeList - Top All Time' },
-  { type: 'anime', id: 'mal-airing',            name: 'MyAnimeList - Top Airing' },
-  { type: 'anime', id: 'mal-popular',           name: 'MyAnimeList - Popular' },
-  { type: 'anime', id: 'mal-movies',            name: 'MyAnimeList - Top Movies' },
   { type: 'anime', id: 'kitsu-airing',          name: 'Kitsu - Top Airing' },
   { type: 'anime', id: 'kitsu-popular',         name: 'Kitsu - Most Popular' },
   { type: 'anime', id: 'kitsu-rated',           name: 'Kitsu - Highest Rated' },
-  { type: 'anime', id: 'kitsu-newest',          name: 'Kitsu - Newest' },
-  { type: 'anime', id: 'anidb-popular',         name: 'AniDB - Popular' }
+  { type: 'anime', id: 'kitsu-newest',          name: 'Kitsu - Newest' }
 ];
 
 function parseConfig(configStr) {
@@ -46,11 +39,11 @@ function getManifest(config) {
     id: 'community.anime-catalogs-clone',
     version: '1.0.0',
     name: 'Anime Catalogs',
-    description: 'Catálogos de anime desde AniList, MyAnimeList, Kitsu y AniDB. Soporta RPDB, filtro Dubbed y Top Rated.',
+    description: 'Catálogos de anime desde AniList y Kitsu. Soporta RPDB, filtro Dubbed y Top Rated.',
     logo: 'https://dl.strem.io/addon-logo.png',
     resources: ['catalog'],
     types: ['anime', 'series', 'movie'],
-    idPrefixes: ['kitsu:', 'mal:', 'anilist:'],
+    idPrefixes: ['kitsu:', 'tt'],
     behaviorHints: { configurable: true },
     catalogs: baseCatalogs.map(c => ({
       ...c,
@@ -189,9 +182,7 @@ async function handleCatalog(req, res) {
     let metas = [];
 
     if (id.startsWith('anilist-'))       metas = await fetchAniList(id);
-    else if (id.startsWith('mal-'))      metas = await fetchMyAnimeList(id);
     else if (id.startsWith('kitsu-'))    metas = await fetchKitsu(id);
-    else if (id.startsWith('anidb-'))    metas = await fetchAniDB(id);
 
     // ── Filter: Dubbed (only when selected as subgenre in Stremio) ──
     if (extra.genre === 'Dubbed') {
@@ -206,13 +197,30 @@ async function handleCatalog(req, res) {
       metas = metas.filter(m => parseFloat(m.imdbRating || 0) >= 8.0);
     }
 
-    // ── RPDB poster replacement ──
-    if (cfg.rpdbkey) {
-      metas = metas.map(m => {
-        const [source, rawId] = m.id.split(':');
-        return applyRPDB(m, source, rawId, cfg.rpdbkey);
-      });
-    }
+    // ── ID Normalization & Rating poster ──
+    const { getMappingData, getImdbId } = require('./helpers/mapping');
+    
+    metas = metas.map(m => {
+      const [source, rawId] = m.id.split(':');
+      
+      // Apply RPDB or MetaHub poster with ratings
+      const updatedMeta = applyRatingPoster(m, source, rawId, cfg.rpdbkey);
+      
+      // Map IDs to IMDB (tt...) or Kitsu (kitsu:) so Stremio can load episodes!
+      const imdbId = getImdbId(source, rawId);
+      if (imdbId) {
+        // IMDB ID is best because Stremio's default Cinemeta handles it out-of-the-box
+        updatedMeta.id = imdbId;
+      } else {
+        // Fallback to Kitsu ID
+        const mapData = getMappingData(source, rawId);
+        if (source !== 'kitsu' && mapData && mapData.kitsu_id) {
+          updatedMeta.id = `kitsu:${mapData.kitsu_id}`;
+        }
+      }
+      
+      return updatedMeta;
+    });
 
     res.json({ metas });
   } catch (err) {
