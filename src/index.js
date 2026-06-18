@@ -228,7 +228,19 @@ async function handleCatalog(req, res) {
       return updatedMeta;
     });
 
-    res.json({ metas });
+    // ── Deduplicate by ID ──
+    // Kitsu/AniList often return separate seasons as separate items. 
+    // Since we map them to a single IMDB ID, we must deduplicate so they don't appear multiple times in the catalog.
+    const uniqueMetas = [];
+    const seenIds = new Set();
+    for (const m of metas) {
+      if (!seenIds.has(m.id)) {
+        seenIds.add(m.id);
+        uniqueMetas.push(m);
+      }
+    }
+
+    res.json({ metas: uniqueMetas });
   } catch (err) {
     console.error('[catalog error]', err.message);
     res.json({ metas: [] });
